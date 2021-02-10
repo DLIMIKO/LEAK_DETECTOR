@@ -1,13 +1,7 @@
-//
-// Created by Matúš Nečas on 01/02/2021.
-//
-
 #include "mem_check.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-
-
 
 
 int cmpmem(const void *a,const void *b)
@@ -31,6 +25,12 @@ void *record_malloc(size_t size, const char *file, int line, const char *func)
 
     void *p = malloc(size);
 
+    if (p == NULL)
+    {
+        printf(RED"Error, memory allocation failed! \n"WHITE);
+        exit(EXIT_FAILURE);
+    }
+
     fprintf(OUT_FILE, "%p %s %d %s %lld\n", p, file, line, func, (int64_t)size);
 
     return p;
@@ -48,6 +48,12 @@ void *record_calloc(size_t n, size_t size_of_el, const char *file, int line, con
     }
 
     void *p = calloc(n, size_of_el);
+
+    if (p == NULL)
+    {
+        printf(RED"Error, memory allocation failed! \n"WHITE);
+        exit(EXIT_FAILURE);
+    }
 
     fprintf(OUT_FILE, "%p %s %d %s %lld\n", p, file, line, func, (int64_t)n * size_of_el);
 
@@ -67,6 +73,12 @@ void *record_realloc(void *ptr, size_t size, const char *file, int line, const c
     fprintf(OUT_FILE, "%p %s %d %s %lld\n", ptr, file, line, func, -1ll);
 
     void *new_ptr = realloc(ptr, size);
+
+    if (new_ptr == NULL)
+    {
+        printf(RED"Error, memory allocation failed! \n"WHITE);
+        exit(EXIT_FAILURE);
+    }
 
     fprintf(OUT_FILE, "%p %s %d %s %lld\n", new_ptr, file, line, func, (int64_t)size);
 
@@ -90,9 +102,9 @@ void record_free(void *ptr, const char *file, int line, const char *func)
 
 void check_leaks()
 {
+    // check whether the memory file is opened and set the pointer at the beginning of the stream
 
-
-    if ( OUT_FILE == NULL || fseek(OUT_FILE, 0, SEEK_SET))
+    if ( OUT_FILE == NULL || fseek(OUT_FILE, 0, SEEK_SET) )
     {
         perror("Error while reading memory file in check_leaks:");
         exit(EXIT_FAILURE);
@@ -100,87 +112,91 @@ void check_leaks()
 
     size_t total_leaks = 0;
     size_t total_memory_leaked = 0;
-    size_t count = 0;
-    size_t count1;
-    size_t  capacity = MAX_ARR;
+    size_t leak_number = 0;
+    size_t count;
+    size_t capacity = MAX_ARR;
+    size_t mem_len = 0;
+
+    // allocate an array to store memory records from memory file
 
     mem_info_t  * mem_registry = (mem_info_t*)malloc(capacity * sizeof(mem_info_t));
-    printf(" Alloc %p %lu\n", mem_registry, capacity * sizeof(mem_info_t));
 
-
-    int i = 0;
+    // if the capacity is no sufficient for at least 1 element, increase the capacity by 10 and reallocate the array
 
     if(capacity <= 0)
     {
         capacity = 10;
-        mem_registry = (mem_info_t *) realloc(mem_registry, capacity * sizeof(mem_info_t));
+        mem_registry = (mem_info_t *)realloc(mem_registry, capacity * sizeof(mem_info_t));
     }
 
+    // load memory data from memory file and store them
 
-    while(fscanf(OUT_FILE,"%li", &mem_registry[i].address) == 1 )
+    while(fscanf(OUT_FILE,"%li", &mem_registry[mem_len].address) == 1 )
     {
 
-        printf("%lu\n", capacity - i - 1);
-        if(capacity  - i - 1  <= 0)
+       // if the capacity is too low, double the capacity and reallocate the array
+
+        if(capacity - mem_len - 1 <= 0)
         {
             capacity *= 2;
-
             mem_registry = (mem_info_t*)realloc(mem_registry,capacity * sizeof(mem_info_t));
         }
 
-        fscanf(OUT_FILE, "%s", mem_registry[i].file);
-        fscanf(OUT_FILE, "%d", &mem_registry[i].line);
-        fscanf(OUT_FILE, "%s", mem_registry[i].function);
-        fscanf(OUT_FILE, "%d", &mem_registry[i].size);
+        fscanf(OUT_FILE, "%s", mem_registry[mem_len].file);
+        fscanf(OUT_FILE, "%d", &mem_registry[mem_len].line);
+        fscanf(OUT_FILE, "%s", mem_registry[mem_len].function);
+        fscanf(OUT_FILE, "%d", &mem_registry[mem_len].size);
 
-       // printf("%lu\n", mem_registry[i].address);
-
-        ++i;
+        ++mem_len;
     }
-    size_t mem_len = i;
-
 
     printf("\nLEAK DETECTOR ANALYSIS:\n");
+
+    // sort the records by addresses so, all the records of each address will be continuous
+
     mergesort(mem_registry, mem_len, sizeof(mem_info_t), cmpmem);
 
-    size_t J;
+    size_t J; // index of unique address
 
+    // iterate the array and analyze
     for (size_t I = 1; I <= mem_len; ++I)
     {
         J = I - 1;
-        count1 = 1;
+        count = 1; // number of records for each address
 
+
+        // skip all the duplicates and count number of records for each address
 
         while (I < mem_len && cmpmem(&mem_registry[I], &mem_registry[J]) == 0)
         {
-            count1++;
+            count++;
             I++;
         }
 
-        if(count1 & 1u)
+        // if the number of records is odd, a leak occurred
+
+        if(count & 1u)
         {
 
-           J += count1 - 1;
-           count++;
-            printf (RED"LEAK %2lu: %s, %i, %s, %p[%d]\n"WHITE,count, mem_registry[J].file, mem_registry[J].line,
+           J += count - 1; // skip to the last record for that address
+           leak_number++;
+            printf (RED"LEAK %2lu: %s, %d, %s, %p[%d]\n"WHITE,leak_number, mem_registry[J].file, mem_registry[J].line,
                     mem_registry[J].function, (size_t*)mem_registry[J].address, mem_registry[J].size);
             total_leaks++;
             total_memory_leaked += mem_registry[J].size;
         }
     }
 
-
-
     if(total_leaks > 0)
     {
         printf("\nMEMORY FAILURE:\n");
-        printf(RED "Total leaks detected:" WHITE "%lu\n", total_leaks);
-        printf(RED "Total memory leaked:" WHITE "%lu Bytes\n", total_memory_leaked);
-       // exit(EXIT_FAILURE);
+        printf(RED "Total leaks detected: " WHITE "%lu\n", total_leaks);
+        printf(RED "Total memory leaked: " WHITE "%lu B\n", total_memory_leaked);
+        exit(EXIT_FAILURE);
     }
     else
     {
-        printf("\n\033[0;32mMEMORY OK: Every allocated memory has been successfully freed :)\033[0m\n");
+        printf(GREEN"MEMORY OK: Every allocated memory has been successfully freed :)"WHITE);
     }
 
 free(mem_registry);
@@ -191,7 +207,7 @@ free(mem_registry);
 
 void print_mem_info()
 {
-
+    // check whether the memory file is opened and set the pointer at the beginning of the stream
 
     if ( OUT_FILE == NULL || fseek(OUT_FILE, 0, SEEK_SET))
     {
@@ -205,9 +221,11 @@ void print_mem_info()
     size_t number_of_freeds = 0;
 
     mem_info_t tmp;
+
     int i = 0;
 
     printf("\nHISTORY OF HEAP MEMORY\n");
+
     while( fscanf(OUT_FILE,"%li", &tmp.address) == 1)
     {
         fscanf(OUT_FILE, "%s", tmp.file);
@@ -215,42 +233,38 @@ void print_mem_info()
         fscanf(OUT_FILE, "%s", tmp.function);
         fscanf(OUT_FILE, "%d", &tmp.size);
 
-
-
        i++;
 
         if(tmp.size == 0)
         {
-            printf (BLUE "%2d.\tFREED        FILE:" WHITE" %s,\t " BLUE "LINE: "WHITE "%i,\t "BLUE"FUNC:" WHITE"%s,\t"
-                    BLUE"ADDR[MEM]" WHITE ":%p[%d]\n",i,
-                    tmp.file, tmp.line, tmp.function,
-                    (size_t*) tmp.address, tmp.size);
-                    number_of_freeds += 1;
+            printf (BLUE "%2d.\tFREED        FILE:" WHITE" %50s,\t " BLUE "LINE: "WHITE "%i,\t "BLUE"FUNC: "
+                    WHITE"%20s,\t"BLUE"ADDR:      " WHITE "%p\n",i,
+                    tmp.file, tmp.line, tmp.function, (size_t*) tmp.address);
+
+            number_of_freeds += 1;
         }
         else if (tmp.size == -1)
         {
+                printf (YELLOW "%2d.\tREALLOCATED  FILE:" WHITE" %50s,\t " YELLOW "LINE: "WHITE "%i,\t "
+                        YELLOW"FUNC: "WHITE"%20s,\t"YELLOW"ADDR:      " WHITE "%p\n",
+                        i, tmp.file, tmp.line, tmp.function, (size_t*) tmp.address);
 
-            printf (YELLOW "%2d.\tREALLOCATED  FILE:" WHITE" %s,\t " YELLOW "LINE: "WHITE "%i,\t "YELLOW"FUNC:" WHITE"%s,\t"
-                    YELLOW"ADDR[MEM]" WHITE ":%p[%d]\n",i,
-                    tmp.file, tmp.line, tmp.function,
-                    (size_t*) tmp.address, tmp.size);
-                     number_of_re_allocations += 1;
-                     number_of_allocations -= 1;
-
+                number_of_re_allocations += 1;
         }
         else
         {
-            printf (RED "%2d.\tALLOCATED    FILE:" WHITE" %s,\t " RED "LINE: "WHITE "%i,\t "RED"FUNC:" WHITE"%s,\t"
-                    RED"ADDR[MEM]" WHITE ":%p[%d]\n",i,
-                    tmp.file, tmp.line, tmp.function,
-                    (size_t*) tmp.address, tmp.size);
-                    number_of_allocations += 1;
+            printf (RED "%2d.\tALLOCATED    FILE:" WHITE" %50s,\t " RED "LINE: "WHITE "%i,\t "RED"FUNC: "
+                    WHITE"%20s,\t" RED"ADDR[MEM]: " WHITE "%p[%d]\n",i,
+                    tmp.file, tmp.line, tmp.function, (size_t*) tmp.address, tmp.size);
+
+            number_of_allocations += 1;
         }
     }
 
-    printf(YELLOW"\nNUMBER OF ALLOCATIONS: %lu\n" WHITE, number_of_allocations);
-    printf(YELLOW "NUMBER OF REALLOCATIONS: %lu\n" WHITE, number_of_re_allocations);
-    printf(YELLOW "NUMBER OF FREEDS: %lu\n" WHITE, number_of_freeds);
+    printf(YELLOW"\nTOTAL MEMORY OPERATIONS %lu\n", number_of_allocations + number_of_freeds + number_of_re_allocations);
+    printf(YELLOW"NUMBER OF ALLOCATIONS: %lu\n" WHITE, number_of_allocations);
+    printf(YELLOW"NUMBER OF REALLOCATIONS: %lu\n" WHITE, number_of_re_allocations);
+    printf(YELLOW"NUMBER OF FREEDS: %lu\n" WHITE, number_of_freeds);
 
 
 
@@ -260,7 +274,7 @@ void init_mem_file(char *name_of_file)
 {
     if(OUT_FILE != NULL)
     {
-        perror("Error with initializing memory file: The file hasn't been closed before reinitialization\n");
+        printf("Error with initializing memory file: The memory file hasn't been closed before reinitialization\n");
     }
 
 
@@ -277,11 +291,13 @@ void close_mem_file()
 {
     if(OUT_FILE == NULL)
     {
-       printf(RED"Error, can't close current file\n");
+       printf(RED"Error with closing memory file: This file might not been initialized!\n"WHITE);
        exit(EXIT_FAILURE);
     }
 
     fclose(OUT_FILE);
     OUT_FILE = NULL;
 }
+
+
 

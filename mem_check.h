@@ -1,7 +1,10 @@
-//
-// Created by Matúš Nečas on 01/02/2021.
-//
-//
+/**
+ * @name MEM_CHECK
+ * @version 2.0
+ * @author Matúš Nečas
+ * @date 10.2.2020
+ * @brief program for detecting leaks and tracking history of the heap memory
+ */
 
 #ifndef UNTITLED7_MEM_CHECK_H
 #define UNTITLED7_MEM_CHECK_H
@@ -10,7 +13,6 @@
 #include <stdio.h>
 #include <stdbool.h>
 
-
 // Macros for coloring the terminal output:
 
 #define WHITE "\033[0m"
@@ -18,7 +20,6 @@
 #define GREEN "\033[0;32m"
 #define YELLOW "\033[0;33m"
 #define BLUE "\033[0;34m"
-
 
 /**
  * Setters:
@@ -29,13 +30,12 @@
 #define MAX_ARR 100
 
 /**
- * Global variable OUT_FILE which operates with the memory text file
+ * Global variable OUT_FILE which operates with the memory text file.
  */
-
 FILE *OUT_FILE;
 
 /**
- * Function init_mem_file initializes a text memory file through global variable OUT_FILE.
+ * Function init_mem_file initializes a memory text file through global variable OUT_FILE.
  * Current memory file will be opened in a write mode.
  * @param name_of_file –> filename of text file to be opened
  */
@@ -104,7 +104,7 @@ void * record_calloc(size_t n, size_t size_of_el, const char *file, int line, co
 void * record_realloc(void *ptr, size_t size, const char *file, int line, const char *func);
 
 /**
- * Function record_free calls free() form <stdlib.h> and makes a record to the text file
+ * Function record_free calls free() form <stdlib.h> and makes a record to the text file.
  * @param ptr -> pointer to the block of memory to be freed
  * @param file -> filename of project where this function was called
  * @param line -> line of file where this function was called
@@ -128,3 +128,5 @@ void check_leaks();
 void print_mem_info();
 
 #endif //UNTITLED7_MEM_CHECK_H
+
+
